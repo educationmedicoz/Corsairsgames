@@ -1,0 +1,192 @@
+<meta name='viewport' content='width=device-width, initial-scale=1'/><!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Corsairs</title>
+<style>
+:root{--bg:#f1fcff;--ink:#3a2a10;--card:#ffffffee;--btn:#fdd34d;--btn2:#e0a000;--mut:#7a6a4a;--row:#fff3c4;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:Georgia,'Noto Serif Devanagari',serif;display:flex;flex-direction:column;overflow:hidden;-webkit-user-select:none;user-select:none}
+header{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;font-size:16px}
+header b{font-size:18px}
+#sc{display:flex;gap:6px;align-items:center}
+.coin{width:16px;height:16px;border-radius:50%;background:#fcc928;border:2px solid #e0a000;display:inline-block}
+#wrap{flex:1;position:relative;min-height:0}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
+#bar{display:flex;justify-content:center;align-items:center;gap:18px;padding:12px 0 6px}
+#pw{text-align:center;font-size:13px;color:var(--mut);padding:0 0 12px;letter-spacing:.3px}
+#go{width:96px;height:96px;border-radius:50%;border:none;background:var(--btn);box-shadow:0 0 0 6px #fde48a88;font-size:42px;color:var(--btn2);cursor:pointer}
+#go:active{transform:scale(.94)}
+#mute{position:absolute;right:10px;top:6px;background:none;border:none;font-size:22px;cursor:pointer;color:var(--ink)}
+#ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px}
+.card{background:var(--card);border-radius:20px;padding:18px;width:100%;max-width:340px;max-height:100%;overflow:auto;text-align:center;box-shadow:0 8px 30px #0003}
+.card h2{margin:0 0 4px;font-size:22px}
+.big{font-size:34px;font-weight:bold;margin:2px 0 8px}
+input{width:100%;padding:10px;border-radius:12px;border:2px solid var(--btn);font-size:16px;margin:6px 0;background:transparent;color:var(--ink);text-align:center}
+.pb{background:var(--btn);border:none;border-radius:14px;padding:12px 22px;font-size:17px;font-weight:bold;color:var(--ink);cursor:pointer;margin-top:6px}
+ol{list-style:none;margin:10px 0 0;padding:0;text-align:left}
+li{display:flex;gap:8px;padding:7px 10px;border-radius:10px;margin-bottom:4px;font-size:15px}
+li.me{background:var(--row)}
+li .n{width:26px;color:var(--mut)}li .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+small{color:var(--mut)}
+#rv{text-align:center;font-size:14px;padding:0 12px 4px;color:var(--mut)}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<header><span>Level <b id="lv">1</b></span><span id="sc"><b id="score">0</b><i class="coin"></i></span></header>
+<div id="rv" class="hide"></div>
+<div id="wrap">
+<canvas id="c"></canvas>
+<button id="mute" aria-label="sound">🔊</button>
+<div id="ov"><div class="card" id="card"></div></div>
+</div>
+<div id="bar"><button id="go" aria-label="start">▶</button></div>
+<div id="pw">Powered by Education Medico</div>
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const cv=$('c'),cx=cv.getContext('2d');
+let W,H,S,CX,CY,R,dpr=1;
+function fit(){dpr=window.devicePixelRatio||1;const r=cv.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*dpr;cv.height=H*dpr;cx.setTransform(dpr,0,0,dpr,0,0);S=Math.min(W,H);CX=W/2;CY=H/2;R=S*0.38}
+addEventListener('resize',fit);
+
+/* ---------- sound ---------- */
+let AC=null,muted=false;
+function ac(){if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state==='suspended')AC.resume();return AC}
+function tone(f,d,type,vol,slide,delay){const a=ac();if(!a||muted)return;const t=a.currentTime+(delay||0);const o=a.createOscillator(),g=a.createGain();o.type=type||'sine';o.frequency.setValueAtTime(f,t);if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,slide),t+d);g.gain.setValueAtTime(vol||.15,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g).connect(a.destination);o.start(t);o.stop(t+d+.02)}
+function noise(d,vol,lp){const a=ac();if(!a||muted)return;const n=a.sampleRate*d,b=a.createBuffer(1,n,a.sampleRate),x=b.getChannelData(0);for(let i=0;i<n;i++)x[i]=(Math.random()*2-1)*(1-i/n);const s=a.createBufferSource();s.buffer=b;const f=a.createBiquadFilter();f.type='lowpass';f.frequency.value=lp||800;const g=a.createGain();g.gain.value=vol||.3;s.connect(f).connect(g).connect(a.destination);s.start()}
+const sfx={
+coin(c){tone(880+Math.min(c,12)*40,.12,'triangle',.18);tone(1320+Math.min(c,12)*40,.14,'sine',.1,0,.05)},
+flip(){tone(300,.12,'square',.07,620)},
+shot(){tone(140,.2,'sawtooth',.1,50);noise(.12,.12,500)},
+boom(){noise(.8,.5,1200);tone(110,.6,'sawtooth',.25,28)},
+level(){[523,659,784,1047].forEach((f,i)=>tone(f,.25,'triangle',.18,0,i*.1))},
+start(){[392,523,659].forEach((f,i)=>tone(f,.15,'triangle',.15,0,i*.07))}};
+$('mute').onclick=e=>{e.stopPropagation();muted=!muted;$('mute').textContent=muted?'🔇':'🔊'};
+
+/* ---------- game state ---------- */
+let st='idle',level=1,score=0,ang=-Math.PI/2,dir=1,coins=[],balls=[],parts=[],spawnT=0,last=0,combo=0,flash=0,shake=0,dead=0;
+const N=36;
+function speed(){return Math.min(4.2,1.5+level*.22)}
+function resetCoins(){coins=[];for(let i=0;i<N;i++)coins.push({a:i/N*Math.PI*2,on:true})}
+function begin(){ac();level=1;score=0;ang=-Math.PI/2;dir=1;balls=[];parts=[];spawnT=1.2;combo=0;resetCoins();st='play';$('lv').textContent=1;$('score').textContent=0;$('ov').classList.add('hide');setGo('flip');sfx.start();push(1,'play')}
+function setGo(m){$('go').textContent=m==='flip'?'⇄':m==='retry'?'↻':'▶'}
+function norm(a){a%=Math.PI*2;return a<0?a+Math.PI*2:a}
+function spawn(){
+  const sa=Math.random()*Math.PI*2,out=S*0.62;
+  // aim at where the ship will be (with some error so it stays fair)
+  const tt=1.1,pred=ang+dir*speed()*tt*(Math.random()<.6?1:-.3);
+  const tx=CX+Math.cos(pred)*R,ty=CY+Math.sin(pred)*R;
+  const sx=CX+Math.cos(sa)*out,sy=CY+Math.sin(sa)*out;
+  const d=Math.hypot(tx-sx,ty-sy),v=S*Math.min(.9,.34+level*.04);
+  balls.push({x:sx,y:sy,vx:(tx-sx)/d*v,vy:(ty-sy)/d*v,t:0});sfx.shot()}
+function boom(x,y,n,cols){for(let i=0;i<n;i++){const a=i/n*6.28,v=50+Math.random()*50;parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,l:.3+Math.random()*.15,c:cols[i%cols.length],r:4+Math.random()*2})}}
+function die(){st='dead';sfx.boom();const sx=CX+Math.cos(ang)*R,sy=CY+Math.sin(ang)*R;boom(sx,sy,14,['#ff4d2e','#ffb02e']);shake=.5;dead=0;setGo('retry');setTimeout(over,900)}
+function next(){level++;push(1,'play');$('lv').textContent=level;sfx.level();resetCoins();flash=1;balls=[];spawnT=1.4}
+function flip(){if(st==='idle'||st==='over'){begin();return}if(st!=='play')return;dir*=-1;sfx.flip()}
+let tl=0;const press=e=>{e.preventDefault();const n=Date.now();if(n-tl<150)return;tl=n;ac();if(st==='dead')return;flip()};
+['pointerdown','touchstart','mousedown'].forEach(ev=>$('go').addEventListener(ev,press,{passive:false}));
+$('wrap').addEventListener('pointerdown',e=>{if(st==='play')press(e)});
+addEventListener('keydown',e=>{if(e.code==='Space'||e.key==='Enter'){e.preventDefault();if(st!=='dead')flip()}});
+
+/* ---------- update / draw ---------- */
+function update(dt){
+  for(const p of parts){p.x+=p.vx*dt;p.y+=p.vy*dt;p.l-=dt}parts=parts.filter(p=>p.l>0);
+  if(flash>0)flash-=dt*1.5;if(shake>0)shake-=dt;
+  if(st!=='play')return;
+  ang=norm(ang+dir*speed()*dt);
+  spawnT-=dt;if(spawnT<=0){spawn();if(level>=3&&Math.random()<Math.min(.7,(level-2)*.15))setTimeout(()=>{if(st==='play')spawn()},180);if(level>=6&&Math.random()<.35)setTimeout(()=>{if(st==='play')spawn()},350);spawnT=Math.max(.3,1.5-level*.16)*(.7+Math.random()*.6)}
+  const sx=CX+Math.cos(ang)*R,sy=CY+Math.sin(ang)*R;
+  for(const c of coins){if(!c.on)continue;let d=Math.abs(norm(c.a)-ang);d=Math.min(d,Math.PI*2-d);if(d<.1){c.on=false;score++;combo++;$('score').textContent=score;sfx.coin(combo);push();boom(CX+Math.cos(c.a)*R,CY+Math.sin(c.a)*R,4,['#fcc928'])}}
+  for(const b of balls){b.x+=b.vx*dt;b.y+=b.vy*dt;b.t+=dt;
+    if(Math.hypot(b.x-sx,b.y-sy)<S*.036&&st==='play'){die();return}}
+  balls=balls.filter(b=>Math.hypot(b.x-CX,b.y-CY)<S*.9&&b.t<4);
+  if(coins.every(c=>!c.on))next();
+}
+function ship(x,y,a){
+  cx.save();cx.translate(x,y);cx.rotate(a+Math.PI/2*(dir>0?1:-1)+(dir>0?0:Math.PI));
+  const s=S*.034;
+  cx.fillStyle='#6b3b12';cx.beginPath();cx.moveTo(-s,0);cx.lineTo(s,0);cx.lineTo(s*.6,s*.9);cx.lineTo(-s*.6,s*.9);cx.closePath();cx.fill();
+  cx.fillStyle='#fff7e0';cx.beginPath();cx.moveTo(0,-s*1.5);cx.lineTo(s*.95,0);cx.lineTo(0,0);cx.closePath();cx.fill();
+  cx.fillStyle='#2b2b2b';cx.beginPath();cx.moveTo(0,-s*1.5);cx.lineTo(-s*.95,0);cx.lineTo(0,0);cx.closePath();cx.fill();
+  cx.restore()}
+function draw(){
+  cx.clearRect(0,0,W,H);cx.save();
+  if(shake>0)cx.translate((Math.random()-.5)*10*shake,(Math.random()-.5)*10*shake);
+  const dk=false;
+  // sea rings & island
+  cx.strokeStyle=dk?'#ffffff22':'#ffffff';cx.lineWidth=2;cx.beginPath();cx.arc(CX,CY,R*1.12,0,7);cx.stroke();
+  cx.fillStyle=dk?'#2b6a7d':'#e6f9fd';cx.beginPath();cx.arc(CX,CY,S*.2,0,7);cx.fill();
+  const g=[['#f9c98c',S*.15],['#f5b878',S*.115],['#efa860',S*.085]];
+  for(const [c,r] of g){cx.fillStyle=c;cx.beginPath();cx.arc(CX,CY,r,0,7);cx.fill()}
+  cx.fillStyle='#8a8a8a';cx.beginPath();cx.arc(CX,CY,S*.045,0,7);cx.fill();
+  cx.fillStyle='#444';cx.beginPath();cx.arc(CX,CY,S*.026,0,7);cx.fill();
+  cx.fillStyle='#69b34a';for(const [a,r] of [[-2.4,.125],[0.6,.125]]){cx.beginPath();cx.arc(CX+Math.cos(a)*S*r,CY+Math.sin(a)*S*r,S*.014,0,7);cx.fill()}
+  // coins
+  for(const c of coins){if(!c.on)continue;const x=CX+Math.cos(c.a)*R,y=CY+Math.sin(c.a)*R;cx.fillStyle='#fcc928';cx.strokeStyle='#e0a000';cx.lineWidth=2;cx.beginPath();cx.arc(x,y,S*.014,0,7);cx.fill();cx.stroke()}
+  // cannonballs
+  for(const b of balls){const m=Math.hypot(b.vx,b.vy);cx.strokeStyle='#00000018';cx.lineWidth=S*.02;cx.lineCap='round';cx.beginPath();cx.moveTo(b.x,b.y);cx.lineTo(b.x-b.vx/m*S*.09,b.y-b.vy/m*S*.09);cx.stroke();cx.fillStyle='#333';cx.beginPath();cx.arc(b.x,b.y,S*.016,0,7);cx.fill();cx.fillStyle='#777';cx.beginPath();cx.arc(b.x-2,b.y-2,S*.005,0,7);cx.fill()}
+  if(st==='play'||st==='idle'||st==='over')ship(CX+Math.cos(ang)*R,CY+Math.sin(ang)*R,ang);
+  for(const p of parts){cx.globalAlpha=Math.max(0,Math.min(1,p.l*2));cx.fillStyle=p.c;cx.beginPath();cx.arc(p.x,p.y,p.r,0,7);cx.fill()}cx.globalAlpha=1;
+  if(flash>0){cx.fillStyle='rgba(255,255,255,'+flash*.6+')';cx.fillRect(0,0,W,H)}
+  cx.restore()}
+function loop(t){const dt=Math.min(.05,(t-last)/1000||0);last=t;update(dt);draw();requestAnimationFrame(loop)}
+
+/* ---------- leaderboard (shared db) ---------- */
+let db=null,uid=null,rows=[],best=0,myName='';
+try{myName=localStorage.getItem('corsairs_name')||''}catch(e){}
+try{best=+(localStorage.getItem('corsairs_best')||0)}catch(e){}
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+async function initDb(){
+  try{
+    const u=await claude.use('user');if(u)uid=await u.id();
+    db=await claude.use('db');if(!db)return;
+    const t=setTimeout(()=>{},10000);
+    db.collection('scores').orderBy('best','desc').limit(30).onSnapshot(s=>{clearTimeout(t);rows=s.docs.map(d=>({id:d.id,...d.data()}));if(uid){const m=rows.find(r=>r.id===uid);if(m&&m.best>best)best=m.best}if(!$('ov').classList.contains('hide'))render()},()=>{});
+  }catch(e){}}
+function listHTML(){
+  if(!db)return '<small>Leaderboard unavailable right now.</small>';
+  if(!rows.length)return '<small>No scores yet. Be the first!</small>';
+  return '<ol>'+rows.map((r,i)=>'<li class="'+(r.id===uid?'me':'')+'"><span class="n">'+(i===0?'👑':(i+1)+'.')+'</span><span class="nm">'+esc(r.name||'Player')+'</span><b>'+(+r.best||0)+'</b></li>').join('')+'</ol>'}
+function render(){
+  const c=$('card');
+  if(st==='over'){
+    c.innerHTML='<small>You scored</small><div class="big">'+score+' <i class="coin"></i></div>'+(score>0&&score>=best?'<div>🏆 New best!</div>':'<small>Best: '+best+'</small>')+
+    (myName?'':'<input id="nm" maxlength="14" placeholder="Enter your name">')+'<h2 style="font-size:17px;margin-top:10px">Leaderboard</h2>'+listHTML()+'<button class="pb" id="again">Play again ↻</button>'}
+  else{
+    c.innerHTML='<h2>⚓ Corsairs</h2><small>Collect the coins, dodge the cannonballs. Tap ⇄ to reverse your ship. Every level gets harder.</small>'+(myName?'':'<input id="nm" maxlength="14" placeholder="Enter your name">')+'<h2 style="font-size:17px;margin-top:10px">Top players</h2>'+listHTML()+'<button class="pb" id="again">▶ Play</button>'}
+  $('again').onclick=()=>{saveName();begin()};extras()}
+function saveName(){const i=$('nm');if(i&&i.value.trim()){myName=i.value.trim().slice(0,14);try{localStorage.setItem('corsairs_name',myName)}catch(e){}}}
+async function over(){
+  st='over';saveName();if(!myName)myName='Player';push(1,'done');
+  const nb=score>best;if(nb){best=score;try{localStorage.setItem('corsairs_best',best)}catch(e){}}
+  render();$('ov').classList.remove('hide');
+  if(db&&uid&&score>0){try{const ref=db.doc('scores/'+uid);const s=await ref.get();const old=s.exists?s.data():{};
+    await ref.set({name:myName,best:Math.max(+old.best||0,score),plays:(+old.plays||0)+1,ts:Date.now()});}catch(e){}}
+  else if(db&&uid){try{const ref=db.doc('scores/'+uid);const s=await ref.get();if(s.exists)await ref.update({plays:(+s.data().plays||0)+1})}catch(e){}}
+}
+/* ---------- play with a friend (live room) ---------- */
+let RM=null,room=null,code='',lastPush=0;
+const BASE='https://claude.ai/artifact/XzxUbH5mZan6HtPNoWunWd';
+function rival(){if(!room)return null;try{return room.peers().find(p=>!p.isMe&&!p.sameTab)||null}catch(e){return null}}
+function push(force,state){if(!room)return;const n=Date.now();if(!force&&n-lastPush<250)return;lastPush=n;try{room.presence({name:myName||'Player',score:score,level:level,state:state||(st==='play'?'play':'idle')}).catch(()=>{})}catch(e){}}
+function refreshRv(){const el=$('rv');if(!room){el.classList.add('hide');return}el.classList.remove('hide');const r=rival();if(!r){el.textContent='👥 Room '+code+' · waiting for a friend…'}else{const p=r.presence||{};el.textContent='👥 '+(p.name||'Friend')+': '+(+p.score||0)+' · Lv '+(+p.level||1)+(p.state==='done'?' · finished':'')}if(!$('ov').classList.contains('hide'))render()}
+function vsText(){const r=rival();if(!r)return 'Waiting for a friend to join…';const p=r.presence||{},nm=p.name||'Friend';if(st!=='over')return nm+' is in the room';if(p.state!=='done')return 'Waiting for '+nm+' to finish… ('+(+p.score||0)+')';const a=score,b=+p.score||0;return a>b?'🏆 You beat '+nm+'! '+a+' – '+b:a<b?nm+' wins '+b+' – '+a:'Draw '+a+' – '+b}
+function extras(){const c=$('card');const box=document.createElement('div');box.style.marginTop='10px';
+  if(room){const t=document.createElement('div');t.style.cssText='font-size:15px;margin:6px 0';t.textContent=st==='over'?vsText():'Room '+code+' · '+vsText();box.appendChild(t);const b=document.createElement('button');b.className='pb';b.textContent='🔗 Share invite link';b.onclick=share;box.appendChild(b)}
+  else if(RM){const b=document.createElement('button');b.className='pb';b.style.cssText='background:transparent;border:2px solid var(--btn)';b.textContent='👥 Play with a friend';b.onclick=invite;box.appendChild(b)}
+  c.appendChild(box)}
+async function joinRoom(cd){try{if(!RM)RM=await claude.use('room');if(!RM)return false;if(room)await room.leave();room=await RM.join('g-'+cd);code=cd;room.onPeers(refreshRv);await room.presence({name:myName||'Player',score:0,level:1,state:'idle'});location.hash='room-'+cd;refreshRv();return true}catch(e){return false}}
+function genCode(){const s='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let o='';for(let i=0;i<4;i++)o+=s[Math.floor(Math.random()*s.length)];return o}
+async function invite(){saveName();const ok=await joinRoom(genCode());if(ok)share();else{const s=document.createElement('small');s.textContent=' Friend mode is unavailable here.';$('card').appendChild(s)}}
+function copyLink(url){if(navigator.clipboard)navigator.clipboard.writeText(url).then(()=>{$('rv').classList.remove('hide');$('rv').textContent='Link copied: '+url},()=>{})}
+function share(){const url=BASE+'#room-'+code;if(navigator.share){navigator.share({title:'Corsairs',text:'Race me in Corsairs! Room '+code,url:url}).catch(()=>copyLink(url))}else copyLink(url)}
+async function initRoom(){try{RM=await claude.use('room')}catch(e){}if(!RM)return;const m=/^#room-([A-Z0-9]{4})$/.exec(location.hash);if(m)await joinRoom(m[1]);if(!$('ov').classList.contains('hide'))render()}
+fit();render();requestAnimationFrame(loop);initDb();initRoom();
+})();
+</script>
+</body>
+</html>
